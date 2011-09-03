@@ -52,28 +52,31 @@ class ConnectionStats(memcache_protocol.ProtocolStats):
         ret_super.extend(ret)
         return ret_super
 
-class MemcachedConnection(object):
-    def __init__(self, sock, address, loop, stats, mc):
+class MemcachedSocket(object):
+    OK = 0
+    FINISHED = 1
+    QUIT = 2
+    ERROR = 3
+
+    def __init__(self, sock, address, stats, mc):
         self.protocol = memcache_protocol.MCProtocol(stats, mc)
         self.buf = ""
         self.sock = sock
         self.address = address
         self.sock.setblocking(0)
-        self.watcher = pyev.Io(self.sock._sock, pyev.EV_READ, loop, self.io_cb)
-        self.watcher.start()
         self.stats = stats
         self.stats.connect()
         logging.debug("{0}: ready".format(self))
-
-    def reset(self, events):
-        self.watcher.stop()
-        self.watcher.set(self.sock, events)
-        self.watcher.start()
 
     def handle_error(self, msg, level=logging.ERROR, exc_info=True):
         logging.log(level, "{0}: {1} --> closing".format(self, msg),
                     exc_info=exc_info)
         self.close()
+
+    def close(self):
+        self.sock.close()
+        self.stats.disconnect()
+        logging.debug("{0}: closed".format(self))
 
     def handle_read(self):
         try:
@@ -81,19 +84,22 @@ class MemcachedConnection(object):
         except socket.error as err:
             if err.args[0] not in NONBLOCKING:
                 self.handle_error("error reading from {0}".format(self.sock))
+                return self.ERROR
 
         if buf:
             try:
                 if self.protocol.got_input(buf):
                     self.buf = self.protocol.get_output()
-                    self.reset(pyev.EV_WRITE) # always want to write after getting command
+                    return self.FINISHED
             except memcache_protocol.ProtocolException, e:
                 self.buf = e.msg
-                self.reset(pyev.EV_WRITE) # always want to write after getting command
+                return self.FINISHED
             except memcache_protocol.QuitException:
                 self.close()
+                return self.QUIT
         else:
             self.handle_error("connection closed by peer", logging.DEBUG, False)
+            return self.ERROR
 
     def handle_write(self):
         try:
@@ -101,22 +107,42 @@ class MemcachedConnection(object):
         except socket.error as err:
             if err.args[0] not in NONBLOCKING:
                 self.handle_error("error writing to {0}".format(self.sock))
+                return self.ERROR
         else:
             self.buf = self.buf[sent:]
             if not self.buf:
-                self.reset(pyev.EV_READ)
+                return self.FINISHED
+        return self.OK
+
+class MemcachedConnection(object):
+    def __init__(self, sock, address, loop, stats, mc):
+        self.socket = MemcachedSocket(sock, address, stats, mc)
+        self.watcher = pyev.Io(sock._sock, pyev.EV_READ, loop, self.io_cb)
+        self.watcher.start()
+        logging.debug("{0}: ready".format(self))
+
+    def reset(self, events):
+        self.watcher.stop()
+        self.watcher.set(self.socket.sock, events)
+        self.watcher.start()
 
     def io_cb(self, watcher, revents):
         if revents & pyev.EV_READ:
-            self.handle_read()
+            ret = self.socket.handle_read()
+            if ret == self.socket.FINISHED:
+                self.reset(pyev.EV_WRITE)
+            elif ret == self.socket.ERROR or ret == self.socket.QUIT:
+                self.close()
         else:
-            self.handle_write()
+            ret = self.socket.handle_write()
+            if ret == self.socket.FINISHED:
+                self.reset(pyev.EV_READ)
+            elif ret == self.socket.ERROR:
+                self.close()
 
     def close(self):
-        self.sock.close()
         self.watcher.stop()
         self.watcher = None
-        self.stats.disconnect()
         logging.debug("{0}: closed".format(self))
 
 class Server(object):
