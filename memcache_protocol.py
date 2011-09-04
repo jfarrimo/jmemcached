@@ -1,5 +1,4 @@
 import memory_cache
-import pyev
 
 VERSION = "0.1"
 
@@ -27,10 +26,12 @@ class ProtocolStats(memory_cache.MemcachedStats):
 
 class ProtocolException(Exception):
     def __init__(self, msg):
+        super(ProtocolException, self).__init__(self)
         self.msg = msg
 
 class QuitException(Exception):
     def __init__(self, msg):
+        super(QuitException, self).__init__(self)
         self.msg = msg
 
 class MCProtocol(object):
@@ -47,6 +48,18 @@ class MCProtocol(object):
         self.memcached = mc
         self.buf = ""
         self.noreply = False
+
+        self.key = ''
+        self.flags = ''
+        self.exptime = ''
+        self.bytes = ''
+        self.casunique = ''
+        self.command = ''
+        self.keys = None
+        self.value = None
+        self.has_body = False
+        self.delay = ''
+        self.sub_command = None
 
     def got_input(self, buf):
         """ return true when got a full command """
@@ -115,7 +128,8 @@ class MCProtocol(object):
                 self.flags = command_info[2]
                 self.exptime = command_info[3]
                 self.bytes = command_info[4]
-                self.noreply = len(command_info) == 6 and command_info[5] == 'noreply'
+                self.noreply = (len(command_info) == 6 and 
+                                command_info[5] == 'noreply')
 
                 if len(self.flags) > 1:
                     raise ProtocolException("CLIENT_ERROR bad flags\r\n")
@@ -135,7 +149,8 @@ class MCProtocol(object):
                 self.exptime = command_info[3]
                 self.bytes = command_info[4]
                 self.casunique = command_info[5]
-                self.noreply = len(command_info) == 7 and command_info[6] == 'noreply'
+                self.noreply = (len(command_info) == 7 and 
+                                command_info[6] == 'noreply')
 
                 if len(self.flags) > 1:
                     raise ProtocolException("CLIENT_ERROR bad flags\r\n")
@@ -157,7 +172,8 @@ class MCProtocol(object):
                 raise ProtocolException('CLIENT_ERROR not enough arguments\r\n')
             else:
                 self.key = command_info[1]
-                self.noreply = len(command_info) == 3 and command_info[2] == 'noreply'
+                self.noreply = (len(command_info) == 3 and 
+                                command_info[2] == 'noreply')
 
         elif self.command in ('incr', 'decr'):
             if len(command_info) < 3:
@@ -165,7 +181,8 @@ class MCProtocol(object):
             else:
                 self.key = command_info[1]
                 self.value = command_info[2]
-                self.noreply = len(command_info) == 4 and command_info[3] == 'noreply'
+                self.noreply = (len(command_info) == 4 and 
+                                command_info[3] == 'noreply')
 
                 if not self.value.isdigit():
                     raise ProtocolException("CLIENT_ERROR bad argument\r\n")
@@ -175,7 +192,8 @@ class MCProtocol(object):
                 self.sub_command = command_info[1]
 
                 if self.sub_command not in self.STATS_TYPES:
-                    raise ProtocolException("CLIENT_ERROR invalid statistic requested\r\n")
+                    raise ProtocolException(
+                        "CLIENT_ERROR invalid statistic requested\r\n")
             else:
                 self.sub_command = ""
 
@@ -190,7 +208,8 @@ class MCProtocol(object):
                     if not self.delay.isdigit():
                         raise ProtocolException("CLIENT_ERROR bad argument\r\n")
 
-                    self.noreply = len(command_info) == 3 and command_info[2] == 'noreply'
+                    self.noreply = (len(command_info) == 3 and 
+                                    command_info[2] == 'noreply')
             else:
                 self.delay = 0
                 self.noreply = False
@@ -215,7 +234,8 @@ class MCProtocol(object):
             self.buf = "STORED\r\n"
 
         elif self.command == 'cas':
-            ret = self.memcached.cas(self.key, self.flags, self.exptime, self.casunique, self.buf)
+            ret = self.memcached.cas(self.key, self.flags, self.exptime, 
+                                     self.casunique, self.buf)
             if ret == self.memcached.STORED:
                 self.buf = "STORED\r\n"
             elif ret == self.memcached.NOT_FOUND:
@@ -224,28 +244,32 @@ class MCProtocol(object):
                 self.buf = "EXISTS\r\n"
 
         elif self.command == 'add':
-            ret = self.memcached.add(self.key, self.flags, self.exptime, self.buf)
+            ret = self.memcached.add(self.key, self.flags, 
+                                     self.exptime, self.buf)
             if ret == self.memcached.STORED:
                 self.buf = "STORED\r\n"
             elif ret == self.memcached.NOT_STORED:
                 self.buf = "NOT_STORED\r\n"
 
         elif self.command == 'replace':
-            ret = self.memcached.replace(self.key, self.flags, self.exptime, self.buf)
+            ret = self.memcached.replace(self.key, self.flags, 
+                                         self.exptime, self.buf)
             if ret == self.memcached.STORED:
                 self.buf = "STORED\r\n"
             elif ret == self.memcached.NOT_STORED:
                 self.buf = "NOT_STORED\r\n"
 
         elif self.command == 'prepend':
-            ret = self.memcached.prepend(self.key, self.flags, self.exptime, self.buf)
+            ret = self.memcached.prepend(self.key, self.flags, 
+                                         self.exptime, self.buf)
             if ret == self.memcached.STORED:
                 self.buf = "STORED\r\n"
             elif ret == self.memcached.NOT_STORED:
                 self.buf = "NOT_STORED\r\n"
 
         elif self.command == 'append':
-            ret = self.memcached.append(self.key, self.flags, self.exptime, self.buf)
+            ret = self.memcached.append(self.key, self.flags, 
+                                        self.exptime, self.buf)
             if ret == self.memcached.STORED:
                 self.buf = "STORED\r\n"
             elif ret == self.memcached.NOT_STORED:
@@ -263,7 +287,8 @@ class MCProtocol(object):
             items = self.memcached.gets(self.keys)
             self.buf = ""
             for key, value, flags, casunique in items:
-                self.buf += "VALUE %s %s %s %s\r\n" % (key, flags, len(value), casunique)
+                self.buf += "VALUE %s %s %s %s\r\n" % (key, flags, 
+                                                       len(value), casunique)
                 self.buf += value + "\r\n"
             self.buf += "END\r\n"
 
@@ -294,7 +319,8 @@ class MCProtocol(object):
 
         elif self.command == 'stats':
             items = self.memcached.stats(self.sub_command)
-            commands = ["STAT %s %s\r\n" % (name, value) for name, value in items]
+            commands = ["STAT %s %s\r\n" % (name, value) 
+                        for name, value in items]
             commands.append("END\r\n")
             self.buf = "".join(commands)
 

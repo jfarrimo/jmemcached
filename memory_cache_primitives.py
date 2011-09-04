@@ -1,5 +1,4 @@
 import logging
-import sys
 import time
 import zlib
 
@@ -18,17 +17,20 @@ class CacheItem(object):
         self.key = key
         self.value = value
         self.flags = flags
-        self.set_exptime(exptime)
+        self.exptime = self.prep_exptime(exptime)
 
         self.prev = None
         self.next = None
 
-    def set_exptime(self, exptime):
+    def prep_exptime(self, exptime):
         exptime = int(exptime)
         if exptime <= self.TIME_CUTOFF and exptime > 0:
-            self.exptime = int_time() + exptime
+            return int_time() + exptime
         else:
-            self.exptime = exptime
+            return exptime
+
+    def set_exptime(self, exptime):
+        self.exptime = self.prep_exptime(exptime)
 
     def casunique(self):
         return unique_hash(self)
@@ -92,14 +94,14 @@ class MemoryCacheStats(object):
         self.limit_maxitems = max_items
         self.limit_maxbytes = max_bytes
 
-    def add_item(self, bytes):
+    def add_item(self, add_bytes):
         self.curr_items += 1
         self.total_items += 1
-        self.bytes += bytes
+        self.bytes += add_bytes
 
-    def del_item(self, bytes):
+    def del_item(self, del_bytes):
         self.curr_items -= 1
-        self.bytes -= bytes
+        self.bytes -= del_bytes
 
     def evict(self):
         self.evictions += 1
@@ -107,7 +109,7 @@ class MemoryCacheStats(object):
     def expire(self):
         self.reclaimed += 1
 
-    def dump(self, command):
+    def dump(self, command): # pylint: disable=W0613
         ret = [('limit_maxbytes', self.limit_maxbytes),
                ('limit_maxitems', self.limit_maxitems),
                ('curr_items', self.curr_items),
@@ -141,11 +143,11 @@ class MemoryCache(object):
             self.stats.evict()
 
     def _remove(self, item):
-        bytes = item.bytes()
-        self.byte_count -= bytes
+        byte_count = item.bytes()
+        self.byte_count -= byte_count
         self.item_count -= 1
         self.lru.remove(item)
-        self.stats.del_item(bytes)
+        self.stats.del_item(byte_count)
 
     def get(self, key):
         if key in self.the_cache:

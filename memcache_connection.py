@@ -91,8 +91,8 @@ class MemcachedSocket(object):
                 if self.protocol.got_input(buf):
                     self.buf = self.protocol.get_output()
                     return self.FINISHED
-            except memcache_protocol.ProtocolException, e:
-                self.buf = e.msg
+            except memcache_protocol.ProtocolException, err:
+                self.buf = err.msg
                 return self.FINISHED
             except memcache_protocol.QuitException:
                 self.close()
@@ -155,7 +155,8 @@ class Server(object):
         self.loop = pyev.default_loop()
         self.watchers = [pyev.Signal(sig, self.loop, self.signal_cb)
                          for sig in STOPSIGNALS]
-        self.watchers.append(pyev.Io(self.sock._sock, pyev.EV_READ, self.loop, self.io_cb))
+        self.watchers.append(
+            pyev.Io(self.sock._sock, pyev.EV_READ, self.loop, self.io_cb))
         self.conns = weakref.WeakValueDictionary()
         self.stats = ConnectionStats()
         self.mc = memory_cache.Memcached(self.stats, max_bytes=1024*1024*1024)

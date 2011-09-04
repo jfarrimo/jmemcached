@@ -1,7 +1,5 @@
 import logging
 import sys
-import time
-import zlib
 
 import memory_cache_primitives
 
@@ -94,9 +92,11 @@ class Memcached(object):
     NOT_STORED = 4
     STORED = 5
 
-    def __init__(self, stats, max_items=DEFAULT_MAX_ITEMS, max_bytes=DEFAULT_MAX_BYTES):
+    def __init__(self, stats, max_items=DEFAULT_MAX_ITEMS, 
+                 max_bytes=DEFAULT_MAX_BYTES):
         self._stats = stats
-        self.mc = memory_cache_primitives.MemoryCache(self._stats, max_items, max_bytes)
+        self.mc = memory_cache_primitives.MemoryCache(
+            self._stats, max_items, max_bytes)
 
     def set(self, key, flags, exptime, value):
         item = self.mc.get(key)
