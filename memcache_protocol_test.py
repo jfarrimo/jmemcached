@@ -1,6 +1,8 @@
 #!/usr/local/bin/python
 import memory_cache
 import memcache_protocol
+import memcache_protocol_execute
+import memcache_protocol_parse
 import unittest
 
 class TestProtocolBase(unittest.TestCase):
@@ -11,20 +13,16 @@ class TestProtocolBase(unittest.TestCase):
 
     def mc_caller(self, commands):
         for req, resp in commands:
-            self.mc.got_input(req)
+            output = self.mc.got_input(req)
             if resp:
-                self.assertTrue(self.mc.get_output() == resp)
-            else:
-                self.mc.get_output()
+                self.assertTrue(output == resp)
 
     def mc_except(self, commands, exception):
         with self.assertRaises(exception):
             for req, resp in commands:
-                self.mc.got_input(req)
+                output = self.mc.got_input(req)
                 if resp:
-                    self.assertTrue(self.mc.get_output() == resp)
-                else:
-                    self.mc.get_output()
+                    self.assertTrue(output == resp)
 
     def test_dump(self):
         stats = self.stats.dump("")
@@ -42,7 +40,6 @@ class TestProtocolStats(unittest.TestCase):
 
     def test_write_bytes(self):
         self.mc.got_input("set test_get_output 0 0 5\r\n12345\r\n")
-        self.mc.get_output()
         self.assertTrue(self.stats.bytes_written == 8)
 
 class TestMCProtocol_Parsing(unittest.TestCase):
@@ -56,18 +53,18 @@ class TestMCProtocol_Parsing(unittest.TestCase):
         self.assertTrue(self.mc.memcached.get( ("test_got_input",) )[0][1] == "12345")
 
     def test_get_output(self):
-        self.mc.got_input("set test_get_output 0 0 5\r\n12345\r\n")
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("set test_get_output 0 0 5\r\n12345\r\n")
+        self.assertTrue(output == "STORED\r\n")
 
     def test_multiple_commands(self):
-        self.mc.got_input("set test_multiple_commands_1 0 0 5\r\n12345\r\n")
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("set test_multiple_commands_1 0 0 5\r\n12345\r\n")
+        self.assertTrue(output == "STORED\r\n")
 
-        self.mc.got_input("set test_multiple_commands_2 0 0 6\r\n123456\r\n")
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("set test_multiple_commands_2 0 0 6\r\n123456\r\n")
+        self.assertTrue(output == "STORED\r\n")
 
-        self.mc.got_input("set test_multiple_commands_3 0 0 7\r\n1234567\r\n")
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("set test_multiple_commands_3 0 0 7\r\n1234567\r\n")
+        self.assertTrue(output == "STORED\r\n")
 
 class TestMCProtocol_Parsing_Partial(unittest.TestCase):
 
@@ -84,8 +81,8 @@ class TestMCProtocol_Parsing_Partial(unittest.TestCase):
     def test_get_output(self):
         self.mc.got_input("set test_get_output 0 0 5\r\n12")
         self.mc.got_input("345\r")
-        self.mc.got_input("\n")
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("\n")
+        self.assertTrue(output == "STORED\r\n")
 
 class TestMCProtocol_Output(unittest.TestCase):
 
@@ -94,8 +91,8 @@ class TestMCProtocol_Output(unittest.TestCase):
         self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
 
     def test_get_output(self):
-        self.mc.got_input("set test_cas 0 0 5 noreply\r\n12345\r\n")
-        self.assertTrue(self.mc.get_output() == "")
+        output = self.mc.got_input("set test_cas 0 0 5 noreply\r\n12345\r\n")
+        self.assertTrue(output == "")
 
 class TestMCProtocol_Commands(TestProtocolBase):
 
@@ -104,38 +101,33 @@ class TestMCProtocol_Commands(TestProtocolBase):
 
     def test_cas(self):
         self.mc.got_input("set test_cas 0 0 5\r\n12345\r\n")
-        self.mc.get_output()
 
-        self.mc.got_input("gets test_cas\r\n")
-        result = self.mc.get_output()
+        result = self.mc.got_input("gets test_cas\r\n")
         casunique = result.split()[4].split('\r')[0]
 
-        self.mc.got_input("cas test_cas 0 0 5 %s\r\n23456\r\n" % casunique)
-        self.assertTrue(self.mc.get_output() == "STORED\r\n")
+        output = self.mc.got_input("cas test_cas 0 0 5 %s\r\n23456\r\n" % casunique)
+        self.assertTrue(output == "STORED\r\n")
 
-        self.mc.got_input("get test_cas\r\n")
-        self.assertTrue(self.mc.get_output() == "VALUE test_cas 0 5\r\n23456\r\nEND\r\n")
+        output = self.mc.got_input("get test_cas\r\n")
+        self.assertTrue(output == "VALUE test_cas 0 5\r\n23456\r\nEND\r\n")
 
     def test_cas_exists(self):
         self.mc.got_input("set test_cas 0 0 5\r\n12345\r\n")
-        self.mc.get_output()
 
-        self.mc.got_input("gets test_cas\r\n")
-        result = self.mc.get_output()
+        result = self.mc.got_input("gets test_cas\r\n")
         casunique = result.split()[4].split('\r')[0]
 
         self.mc.got_input("set test_cas 0 0 5\r\n67890\r\n")
-        self.mc.get_output()
 
-        self.mc.got_input("cas test_cas 0 0 5 %s\r\n23456\r\n" % casunique)
-        self.assertTrue(self.mc.get_output() == "EXISTS\r\n")
+        output = self.mc.got_input("cas test_cas 0 0 5 %s\r\n23456\r\n" % casunique)
+        self.assertTrue(output == "EXISTS\r\n")
 
-        self.mc.got_input("get test_cas\r\n")
-        self.assertTrue(self.mc.get_output() == "VALUE test_cas 0 5\r\n67890\r\nEND\r\n")
+        output = self.mc.got_input("get test_cas\r\n")
+        self.assertTrue(output == "VALUE test_cas 0 5\r\n67890\r\nEND\r\n")
 
     def test_cas_not_exists(self):
-        self.mc.got_input("cas test_cas 0 0 5 555\r\n23456\r\n")
-        self.assertTrue(self.mc.get_output() == "NOT_FOUND\r\n")
+        output = self.mc.got_input("cas test_cas 0 0 5 555\r\n23456\r\n")
+        self.assertTrue(output == "NOT_FOUND\r\n")
 
     def test_add(self):
         self.mc_caller([("add test_add 0 0 5\r\n12345\r\n", "STORED\r\n")])
@@ -185,9 +177,7 @@ class TestMCProtocol_Commands(TestProtocolBase):
 
     def test_gets(self):
         self.mc.got_input("set test_gets 0 0 5\r\n12345\r\n")
-        self.mc.get_output()
-        self.mc.got_input("gets test_gets\r\n")
-        result = self.mc.get_output()
+        result = self.mc.got_input("gets test_gets\r\n")
         self.assertTrue(result[:20] == "VALUE test_gets 0 5 ")
         self.assertTrue(result[-14:] == "\r\n12345\r\nEND\r\n")
 
@@ -202,123 +192,120 @@ class TestMCProtocol_Commands(TestProtocolBase):
         self.mc_caller([("flush_all\r\n", "OK\r\n")])
 
     def test_flush_all_no_reply(self):
-        self.mc.got_input("flush_all noreply\r\n")
-        self.assertTrue(self.mc.get_output() == "")
+        output = self.mc.got_input("flush_all noreply\r\n")
+        self.assertTrue(output == "")
 
     def test_flush_all_delay(self):
         self.mc_caller([("flush_all 10\r\n", "OK\r\n")])
 
     def test_flush_all_delay_no_reply(self):
-        self.mc.got_input("flush_all 10 noreply\r\n")
-        self.assertTrue(self.mc.get_output() == "")
+        output = self.mc.got_input("flush_all 10 noreply\r\n")
+        self.assertTrue(output == "")
 
     def test_version(self):
-        self.mc_caller([("version\r\n", "VERSION %s\r\n" % memcache_protocol.VERSION)])
+        self.mc_caller([("version\r\n", "VERSION %s\r\n" % 
+                         memcache_protocol_execute.VERSION)])
 
     def test_stats(self):
-        self.mc.got_input("stats\r\n")
-        self.assertTrue(self.mc.get_output() is not None)
+        output = self.mc.got_input("stats\r\n")
+        self.assertTrue(output is not None)
 
     def test_stats_settings(self):
-        self.mc.got_input("stats settings\r\n")
-        self.assertTrue(self.mc.get_output() is not None)
+        output = self.mc.got_input("stats settings\r\n")
+        self.assertTrue(output is not None)
 
     def test_stats_items(self):
-        self.mc.got_input("stats items\r\n")
-        self.assertTrue(self.mc.get_output() is not None)
+        output = self.mc.got_input("stats items\r\n")
+        self.assertTrue(output is not None)
 
     def test_stats_sizes(self):
-        self.mc.got_input("stats sizes\r\n")
-        self.assertTrue(self.mc.get_output() is not None)
+        output = self.mc.got_input("stats sizes\r\n")
+        self.assertTrue(output is not None)
 
     def test_stats_slabs(self):
-        self.mc.got_input("stats slabs\r\n")
-        self.assertTrue(self.mc.get_output() is not None)
+        output = self.mc.got_input("stats slabs\r\n")
+        self.assertTrue(output is not None)
 
     def test_quit(self):
-        self.mc_except([("quit\r\n","")], memcache_protocol.QuitException)
+        self.mc_except([("quit\r\n","")], memcache_protocol_execute.QuitException)
 
 class TestMCProtocol_BadCommands(TestProtocolBase):
 
     def test_bad_command_short(self):
         self.mc_except([("flub\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_command_full(self):
         self.mc_except([("flub test_set 0 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_delimeter(self):
         self.mc_except([("set test_got_input 0 0 5\r \n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_bytes(self):
         self.mc_except([("set test_set 0 0 5\r\n1234567\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_ending(self):
         self.mc_except([("set test_set 0 0 5\r\n1234567","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_ending2(self):
         self.mc_except([("set test_set 0 0 5\r\n12345get test_set\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_set_args(self):
         self.mc_except([("set test_set 0 0\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_set_flags(self):
         self.mc_except([("set test_set a 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_set_flags_length(self):
         self.mc_except([("set test_set aaa 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_set_exptime(self):
         self.mc_except([("set test_set 0 a 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_set_bytes(self):
         self.mc_except([("set test_set 0 0 a\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_cas_args(self):
         self.mc_except([("cas test_cas 0 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_cas_flags(self):
         self.mc_except([("cas test_cas a 0 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_cas_flags_length(self):
         self.mc_except([("cas test_cas 00 0 0 5\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_cas_exptime(self):
         self.mc_except([("cas test_cas 0 a 5 100\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_cas_bytes(self):
         self.mc_except([("cas test_cas 0 0 a 100\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
-
-    def test_bad_cas_casunique(self):
-        self.mc_except([("cas test_cas 0 0 5 a\r\n12345\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_get_args(self):
         self.mc_except([("get\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_delete_args(self):
         self.mc_except([("delete\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_incr_args(self):
         self.mc_except([("incr test_incr\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_incr_value(self):
         self.mc_caller([("set test_incr 0 0 5\r\naaaaa\r\n", "STORED\r\n"),
@@ -328,11 +315,11 @@ class TestMCProtocol_BadCommands(TestProtocolBase):
     def test_bad_incr_not_number(self):
         self.mc_except([("set test_incr 0 0 5\r\n12345\r\n", "STORED\r\n"),
                         ("incr test_incr a\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_decr_args(self):
         self.mc_except([("decr test_decr\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_decr_value(self):
         self.mc_caller([("set test_decr 0 0 5\r\naaaaa\r\n", "STORED\r\n"),
@@ -342,15 +329,21 @@ class TestMCProtocol_BadCommands(TestProtocolBase):
     def test_bad_decr_not_number(self):
         self.mc_except([("set test_decr 0 0 5\r\n12345\r\n", "STORED\r\n"),
                         ("decr test_decr a\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_flush_all_delay(self):
         self.mc_except([("flush_all a\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
 
     def test_bad_stats(self):
         self.mc_except([("stats flub\r\n","")], 
-                       memcache_protocol.ProtocolException)
+                       memcache_protocol_parse.ProtocolException)
+
+class TestExecute(unittest.TestCase):
+    def test_bad_command(self):
+        cmd = memcache_protocol_parse.MCCommand(command='flub')
+        with self.assertRaises(memcache_protocol_execute.ExecuteException):
+            memcache_protocol_execute.execute_command(cmd, None, '')
 
 if __name__ == "__main__":
     unittest.main()

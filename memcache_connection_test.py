@@ -43,6 +43,13 @@ class TestProtocolBase(unittest.TestCase):
         self.sock.buf = "stats\r\n"
         self.assertTrue(self.mcsock.handle_read() == self.mcsock.FINISHED)
 
+    def test_read_partial(self):
+        self.sock.buf = "stat"
+        self.assertTrue(self.mcsock.handle_read() == self.mcsock.CONTINUE)
+
+        self.sock.buf = "s\r\n"
+        self.assertTrue(self.mcsock.handle_read() == self.mcsock.FINISHED)
+
     def test_read_socket_error(self):
         self.sock.raise_on_access = True
         self.assertTrue(self.mcsock.handle_read() == self.mcsock.ERROR)
@@ -59,7 +66,7 @@ class TestProtocolBase(unittest.TestCase):
         self.assertTrue(self.mcsock.handle_read() == self.mcsock.ERROR)
 
     def test_write(self):
-        self.mcsock.buf = "STORED\r\n"
+        self.mcsock.reply = "STORED\r\n"
         self.assertTrue(self.mcsock.handle_write() == self.mcsock.FINISHED)
 
     def test_write_socket_error(self):
@@ -68,7 +75,7 @@ class TestProtocolBase(unittest.TestCase):
 
     def test_write_partial(self):
         self.sock.write_partial = True
-        self.mcsock.buf = "STORED\r\n"
+        self.mcsock.reply = "STORED\r\n"
         self.assertTrue(self.mcsock.handle_write() == self.mcsock.OK)
 
 if __name__ == "__main__":

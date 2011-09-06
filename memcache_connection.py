@@ -8,6 +8,8 @@ import time
 import weakref
 
 import memcache_protocol
+import memcache_protocol_execute
+import memcache_protocol_parse
 import memory_cache
 
 logging.basicConfig(level=logging.DEBUG)
@@ -53,14 +55,15 @@ class ConnectionStats(memcache_protocol.ProtocolStats):
         return ret_super
 
 class MemcachedSocket(object):
-    OK = 0
-    FINISHED = 1
-    QUIT = 2
-    ERROR = 3
+    CONTINUE = 0
+    ERROR = 1
+    FINISHED = 2
+    OK = 3
+    QUIT = 4
 
     def __init__(self, sock, address, stats, mc):
         self.protocol = memcache_protocol.MCProtocol(stats, mc)
-        self.buf = ""
+        self.reply = ""
         self.sock = sock
         self.address = address
         self.sock.setblocking(0)
@@ -88,29 +91,30 @@ class MemcachedSocket(object):
 
         if buf:
             try:
-                if self.protocol.got_input(buf):
-                    self.buf = self.protocol.get_output()
+                self.reply = self.protocol.got_input(buf)
+                if self.reply is not None:
                     return self.FINISHED
-            except memcache_protocol.ProtocolException, err:
-                self.buf = err.msg
+            except memcache_protocol_parse.ProtocolException, err:
+                self.reply = err.msg
                 return self.FINISHED
-            except memcache_protocol.QuitException:
+            except memcache_protocol_execute.QuitException:
                 self.close()
                 return self.QUIT
         else:
             self.handle_error("connection closed by peer", logging.DEBUG, False)
             return self.ERROR
+        return self.CONTINUE
 
     def handle_write(self):
         try:
-            sent = self.sock.send(self.buf)
+            sent = self.sock.send(self.reply)
         except socket.error as err:
             if err.args[0] not in NONBLOCKING:
                 self.handle_error("error writing to {0}".format(self.sock))
                 return self.ERROR
         else:
-            self.buf = self.buf[sent:]
-            if not self.buf:
+            self.reply = self.reply[sent:]
+            if not self.reply:
                 return self.FINISHED
         return self.OK
 
