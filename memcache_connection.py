@@ -150,20 +150,36 @@ class MemcachedConnection(object):
         logging.debug("{0}: closed".format(self))
 
 class Server(object):
-    def __init__(self, address=("127.0.0.1", 11212)):
-        self.sock = socket.socket()
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(address)
-        self.sock.setblocking(0)
-        self.address = self.sock.getsockname()
+    def __init__(self, interface="", tcp_port=11211, udp_port=0, 
+                 unix_socket="", unix_mask="0700",
+                 max_bytes=1024*1024*1024):
         self.loop = pyev.default_loop()
         self.watchers = [pyev.Signal(sig, self.loop, self.signal_cb)
                          for sig in STOPSIGNALS]
-        self.watchers.append(
-            pyev.Io(self.sock._sock, pyev.EV_READ, self.loop, self.io_cb))
+
+        if unix_socket:
+            try:
+                os.remove(unix_socket)
+            except os.OSError:
+                pass
+
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind(unix_socket)
+            self.sock.setblocking(0)
+            self.watchers.append(
+                pyev.Io(self.sock._sock, pyev.EV_READ, self.loop, self.io_cb))
+        else:
+            self.sock = socket.socket()
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind( (interface, tcp_port) )
+            self.sock.setblocking(0)
+            self.watchers.append(
+                pyev.Io(self.sock._sock, pyev.EV_READ, self.loop, self.io_cb))
+
         self.conns = weakref.WeakValueDictionary()
         self.stats = ConnectionStats()
-        self.mc = memory_cache.Memcached(self.stats, max_bytes=1024*1024*1024)
+        self.mc = memory_cache.Memcached(self.stats, max_bytes=max_bytes)
 
     def handle_error(self, msg, level=logging.ERROR, exc_info=True):
         logging.log(level, "{0}: {1} --> stopping".format(self, msg),

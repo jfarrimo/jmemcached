@@ -1,8 +1,8 @@
 #!/usr/local/bin/python
 import memcache
 
-#mc = memcache.Client(['127.0.0.1:11211'], debug=False)
-mc = memcache.Client(['192.168.1.94:11211'], debug=False)
+mc = memcache.Client(['127.0.0.1:11211'], debug=False)
+#mc = memcache.Client(['192.168.1.94:11211'], debug=False)
 
 # SET
 ######
@@ -20,7 +20,7 @@ print '%s' % value
 
 mc.set('repl_key2', 'prev repl value')
 mc.replace('repl_key2', 'new prev repl value')
-value = mc.get('repl_key')
+value = mc.get('repl_key2')
 print '%s' % value
 
 # GET

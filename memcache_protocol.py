@@ -55,7 +55,7 @@ class MCProtocol(object):
         delimiter = buf.find('\r')
         if delimiter > -1:
             command_string = self.buf + buf[:delimiter]
-            buf = buf[delimiter+1:]
+            buf = buf[delimiter+1:] # skip the \r
             self.state = self.STATE_N_SEARCH
             self.command = mp_parse.parse_command(command_string)
         else:
