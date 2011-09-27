@@ -1,5 +1,5 @@
 """
-Parse a memcached command string.
+Parse a memcached command string.  Return a command object.
 """
 
 class ProtocolException(Exception):
@@ -8,9 +8,9 @@ class ProtocolException(Exception):
         super(ProtocolException, self).__init__(self)
         self.msg = msg
 
-class MCCommand(object):
+class MCCommand(object): # pylint: disable=R0902,R0903
     """ parsed memcached command """
-    def __init__(self, 
+    def __init__(self, # pylint: disable=R0913
                  command = '',
                  key = '',
                  flags = '0',

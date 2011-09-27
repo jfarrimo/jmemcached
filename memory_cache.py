@@ -1,11 +1,13 @@
-import logging
+"""
+memcached engine
+"""
 import sys
 
 import memory_cache_primitives
 
-logging.basicConfig(level=logging.DEBUG)
-
 class MemcachedStats(memory_cache_primitives.MemoryCacheStats):
+    """ stats for memcached """
+    # pylint: disable=R0902
     def __init__(self):
         super(MemcachedStats, self).__init__()
 
@@ -24,11 +26,14 @@ class MemcachedStats(memory_cache_primitives.MemoryCacheStats):
         self.cas_badvals = 0
         self.auth_cmds = 0
         self.auth_errors = 0
+    # pylint: enable=R0902
 
     def set(self):
+        """ set command """
         self.cmd_set += 1
 
     def get(self, hit):
+        """ get command """
         self.cmd_get += 1
         if hit:
             self.get_hits += 1
@@ -36,33 +41,40 @@ class MemcachedStats(memory_cache_primitives.MemoryCacheStats):
             self.get_misses += 1
 
     def delete(self, hit):
+        """ delete command """
         if hit:
             self.delete_hits += 1
         else:
             self.delete_misses += 1
 
     def incr(self, hit):
+        """ incr command """
         if hit:
             self.incr_hits += 1
         else:
             self.incr_misses += 1
 
     def decr(self, hit):
+        """ decr command """
         if hit:
             self.decr_hits += 1
         else:
             self.decr_misses += 1
 
     def cas_miss(self):
+        """ cas miss """
         self.cas_misses += 1
 
     def cas_hit(self):
+        """ cas hit """
         self.cas_hits += 1
 
     def cas_badval(self):
+        """ cas badval """
         self.cas_badvals += 1
 
     def dump(self, command):
+        """ dump the contents """
         ret_super = super(MemcachedStats, self).dump(command)
         ret = [('cmd_get', self.cmd_get),
                ('cmd_set', self.cmd_set),
@@ -85,6 +97,9 @@ DEFAULT_MAX_BYTES = sys.maxint
 DEFAULT_MAX_ITEMS = sys.maxint
 
 class Memcached(object):
+    """
+    memcached engine
+    """
     DELETED = 0
     EXISTS = 1
     NOT_FOUND = 2
@@ -95,75 +110,84 @@ class Memcached(object):
     def __init__(self, stats, max_items=DEFAULT_MAX_ITEMS, 
                  max_bytes=DEFAULT_MAX_BYTES):
         self._stats = stats
-        self.mc = memory_cache_primitives.MemoryCache(
+        self.cache = memory_cache_primitives.MemoryCache(
             self._stats, max_items, max_bytes)
 
     def set(self, key, flags, exptime, value):
-        item = self.mc.get(key)
+        """ set command """
+        item = self.cache.get(key)
         if item is not None:
-            self.mc.replace(item, value, flags, exptime)
+            self.cache.replace(item, value, flags, exptime)
         else:
-            self.mc.add(key, value, flags, exptime)
+            self.cache.add(key, value, flags, exptime)
         self._stats.set()
         return self.STORED
 
+    # pylint: disable=R0913
     def cas(self, key, flags, exptime, casunique, value):
-        item = self.mc.get(key)
+        """ cas command """
+        item = self.cache.get(key)
         if item is None:
-            self.mc.add(key, value, flags, exptime)
+            self.cache.add(key, value, flags, exptime)
             self._stats.cas_miss()
             return self.NOT_FOUND
         elif item.casunique() == int(casunique):
-            self.mc.replace(item, value, flags, exptime)
+            self.cache.replace(item, value, flags, exptime)
             self._stats.cas_hit()
             return self.STORED
         else:
             self._stats.cas_badval()
             return self.EXISTS
+    # pylint: enable=R0913
 
     def add(self, key, flags, exptime, value):
-        item = self.mc.get(key)
+        """ add command """
+        item = self.cache.get(key)
         if item is not None:
-            self.mc.touch(item)
+            self.cache.touch(item)
             return self.NOT_STORED
         else:
-            self.mc.add(key, value, flags, exptime)
+            self.cache.add(key, value, flags, exptime)
             return self.STORED
 
     def replace(self, key, flags, exptime, value):
-        item = self.mc.get(key)
+        """ replace command """
+        item = self.cache.get(key)
         if item is not None:
-            self.mc.replace(item, value, flags, exptime)
+            self.cache.replace(item, value, flags, exptime)
             return self.STORED
         else:
             return self.NOT_STORED
 
     def prepend(self, key, flags, exptime, value):
-        item = self.mc.get(key)
+        """ prepend command """
+        item = self.cache.get(key)
         if item is None:
             return self.NOT_STORED
         else:
             value = value + item.value
-            self.mc.replace(item, value, flags, exptime)
+            self.cache.replace(item, value, flags, exptime)
             return self.STORED
 
     def append(self, key, flags, exptime, value):
-        item = self.mc.get(key)
+        """ append command """
+        item = self.cache.get(key)
         if item is None:
             return self.NOT_STORED
         else:
             value = item.value + value
-            self.mc.replace(item, value, flags, exptime)
+            self.cache.replace(item, value, flags, exptime)
             return self.STORED
 
     def increment(self, key, value):
-        item = self.mc.get(key)
+        """ increment command """
+        item = self.cache.get(key)
         if item is not None:
             if not item.value.isdigit():
                 return (self.NOT_NUMBER, None)
             else:
                 value = str(int(item.value) + int(value))
-                item = self.mc.replace(item, value)
+                item = self.cache.replace(item, value)
                 self._stats.incr(True)
                 return (self.STORED, item.value)
         else:
@@ -171,13 +195,14 @@ class Memcached(object):
             return (self.NOT_FOUND, None)
 
     def decrement(self, key, value):
-        item = self.mc.get(key)
+        """ decrement command """
+        item = self.cache.get(key)
         if item is not None:
             if not item.value.isdigit():
                 return (self.NOT_NUMBER, None)
             else:
                 value = str(int(item.value) - int(value))
-                item = self.mc.replace(item, value)
+                item = self.cache.replace(item, value)
                 self._stats.decr(True)
                 return (self.STORED, item.value)
         else:
@@ -185,23 +210,26 @@ class Memcached(object):
             return (self.NOT_FOUND, None)
 
     def get(self, keys):
-        items = [(key, self.mc.get(key)) for key in keys]
+        """ get command """
+        items = [(key, self.cache.get(key)) for key in keys]
         items = [(key, item.value, item.flags) 
                  for key, item in items if item is not None]
         self._stats.get(bool(items))
         return items
 
     def gets(self, keys):
-        items = [(key, self.mc.get(key)) for key in keys]
+        """ gets command """
+        items = [(key, self.cache.get(key)) for key in keys]
         items = [(key, item.value, item.flags, item.casunique()) 
                   for key, item in items if item is not None]
         self._stats.get(bool(items))
         return items
 
     def delete(self, key):
-        item = self.mc.get(key)
+        """ delete command """
+        item = self.cache.get(key)
         if item is not None:
-            self.mc.delete(item)
+            self.cache.delete(item)
             self._stats.delete(True)
             return self.DELETED
         else:
@@ -209,8 +237,10 @@ class Memcached(object):
             return self.NOT_FOUND
 
     def flush(self, delay):
-        self.mc.flush(delay)
+        """ flush command """
+        self.cache.flush(delay)
 
     def stats(self, sub):
+        """ stats command """
         stats = self._stats.dump(sub)
         return stats

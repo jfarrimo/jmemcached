@@ -4,7 +4,7 @@ import socket
 import unittest
 
 HOST = '127.0.0.1'        # The remote host
-PORT = 11212              # The same port as used by the server
+PORT = 11211              # The same port as used by the server
 
 class SimpleSocket(object):
     def __init__(self, host, port):

@@ -1,6 +1,7 @@
 """
 Memcached protocol handling.
 """
+import memcache_logging as mc_log
 import memcache_protocol_execute as mp_execute
 import memcache_protocol_parse as mp_parse
 import memory_cache
@@ -31,17 +32,19 @@ class ProtocolStats(memory_cache.MemcachedStats):
         ret_super.extend(ret)
         return ret_super
 
-class MCProtocol(object):
+class MCProtocol(object): # pylint: disable=R0903
     """
-    Handle the memcached protocol, taking the input, processing it,
-    and returning the output.
+    State machine to handle the memcached protocol, taking the 
+    input, processing it, and returning the output.
     """
     STATE_R_SEARCH = 0
     STATE_N_SEARCH = 1
     STATE_BODY = 2
     STATE_DONE = 3
 
-    def __init__(self, stats, memcached):
+    def __init__(self, stats, memcached, address):
+        self.logger = mc_log.MemcachedLogger(address)
+        self.logger.log_vvv("entering R_SEARCH state")
         self.state = self.STATE_R_SEARCH
         self.stats = stats
         self.memcached = memcached
@@ -56,6 +59,8 @@ class MCProtocol(object):
         if delimiter > -1:
             command_string = self.buf + buf[:delimiter]
             buf = buf[delimiter+1:] # skip the \r
+            self.logger.log_vv("command string = '%s'", command_string)
+            self.logger.log_vvv("entering N_SEARCH state")
             self.state = self.STATE_N_SEARCH
             self.command = mp_parse.parse_command(command_string)
         else:
@@ -76,8 +81,10 @@ class MCProtocol(object):
             buf = buf[1:]
             self.buf = ""
             if int(self.command.bytes) > 0:
+                self.logger.log_vvv("entering BODY_SEARCH state")
                 self.state = self.STATE_BODY
             else:
+                self.logger.log_vvv("entering DONE state")
                 self.state = self.STATE_DONE
         return buf
 
@@ -94,12 +101,14 @@ class MCProtocol(object):
                 raise mp_parse.ProtocolException('Malformed request')
             else:
                 self.buf = self.buf[:int(self.command.bytes)]
+                self.logger.log_vv("body = '%s'", self.buf)
+                self.logger.log_vvv("entering DONE state")
                 self.state = self.STATE_DONE
         return buf
 
     def got_input(self, buf):
         """ 
-        state machine for parsing a command from tcp input
+        state machine for parsing a command from TCP input
 
         return output when got full command 
         """
@@ -118,6 +127,8 @@ class MCProtocol(object):
             self.buf = ""
             self.state = self.STATE_R_SEARCH
             self.stats.write_bytes(len(retval))
+            self.logger.log_vv("response = '%s'", retval)
+            self.logger.log_vvv("entering R_SEARCH state")
             return retval
         else:
             return None

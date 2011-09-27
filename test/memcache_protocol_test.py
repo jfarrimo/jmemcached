@@ -9,7 +9,9 @@ class TestProtocolBase(unittest.TestCase):
 
     def setUp(self):
         self.stats = memcache_protocol.ProtocolStats()
-        self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
+        self.mc = memcache_protocol.MCProtocol(self.stats, 
+                                               memory_cache.Memcached(self.stats),
+                                               ('127.0.0.1', 11211))
 
     def mc_caller(self, commands):
         for req, resp in commands:
@@ -32,7 +34,9 @@ class TestProtocolStats(unittest.TestCase):
 
     def setUp(self):
         self.stats = memcache_protocol.ProtocolStats()
-        self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
+        self.mc = memcache_protocol.MCProtocol(self.stats, 
+                                               memory_cache.Memcached(self.stats),
+                                               ('127.0.0.1', 11211))
 
     def test_read_bytes(self):
         self.mc.got_input("set test_got_input 0 0 5\r\n12345\r\n")
@@ -46,7 +50,9 @@ class TestMCProtocol_Parsing(unittest.TestCase):
 
     def setUp(self):
         self.stats = memcache_protocol.ProtocolStats()
-        self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
+        self.mc = memcache_protocol.MCProtocol(self.stats, 
+                                               memory_cache.Memcached(self.stats),
+                                               ('127.0.0.1', 11211))
 
     def test_got_input(self):
         self.mc.got_input("set test_got_input 0 0 5\r\n12345\r\n")
@@ -70,7 +76,9 @@ class TestMCProtocol_Parsing_Partial(unittest.TestCase):
 
     def setUp(self):
         self.stats = memcache_protocol.ProtocolStats()
-        self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
+        self.mc = memcache_protocol.MCProtocol(self.stats, 
+                                               memory_cache.Memcached(self.stats),
+                                               ('127.0.0.1', 11211))
 
     def test_got_input(self):
         self.mc.got_input("set test_got_i")
@@ -88,7 +96,9 @@ class TestMCProtocol_Output(unittest.TestCase):
 
     def setUp(self):
         self.stats = memcache_protocol.ProtocolStats()
-        self.mc = memcache_protocol.MCProtocol(self.stats, memory_cache.Memcached(self.stats))
+        self.mc = memcache_protocol.MCProtocol(self.stats, 
+                                               memory_cache.Memcached(self.stats),
+                                               ('127.0.0.1', 11211))
 
     def test_get_output(self):
         output = self.mc.got_input("set test_cas 0 0 5 noreply\r\n12345\r\n")

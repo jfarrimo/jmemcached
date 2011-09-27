@@ -1,10 +1,20 @@
-import memcache_connection
+"""
+setup and start jmemcached
+"""
+
+import daemon
+import pwd
 import optparse
+import os
+
+import memcache_logging as mc_log
+import memcache_connection
 
 def parse_command_line():
+    """ parse the command line """
+
     parser = optparse.OptionParser()
 
-    # HAVE
     parser.add_option("-p", "--tcp-port", dest="tcp_port", type="int", 
                       default=11211, metavar="PORT",
                       help="TCP port number to listen on (default: %default)")
@@ -16,42 +26,44 @@ def parse_command_line():
                       default=64, metavar="MB",
                       help="max memory to use for items in megabytes "
                       "(default: %default MB)")
-    parser.add_option("-U", "--udp-port", dest="udp_port", type="int", 
-                      default=11211, metavar="PORT",
-                      help="UDP port number to listen on (default: "
-                      "%default, 0 is off)")
-    parser.add_option("-s", "--socket", dest="unix_socket", default="", 
-                      metavar="SOCKET",
-                      help="UNIX socket path to listen on (disables network "
-                      "support)")
-    parser.add_option("-a", "--mask", dest="unix_mask", default="0700", 
-                      metavar="MASK",
-                      help="access mask for UNIT socket, in octal "
-                      "(default %default)")
-
-    # DOING
-    # parser.add_option("-v", "--verbose", dest="verbose", action="store_true", 
-    #                   default=False,
-    #                   help="verbose (print errors/warnings while in "
-    #                   "event loop)")
-    # parser.add_option("-vv", "--very-verbose", dest="very_verbose", 
-    #                   action="store_true", default=False,
-    #                   help="very verbose (also print client "
-    #                   "commands/responses)")
-    # parser.add_option("-vvv", "--extremely-verbose", dest="extremely_verbose", 
-    #                   action="store_true", default=False,
-    #                   help="extremely verbose (also print internal state "
-    #                   "transitions)")
+    parser.add_option("-d", "--daemonize", dest="daemonize", 
+                      action="store_true", default=False,
+                      help="run as a daemon")
+    parser.add_option("-u", "--username", dest="username", metavar="USERNAME",
+                      default="",
+                      help="assume identity of <username> (only when "
+                      "run as root)")
+    parser.add_option("-P", "--pidfile", dest="pidfile", metavar="FILE",
+                      default="",
+                      help="save PID in <file>, only used with -d option")
+    # punting on the multipl-v's way of specifying verbosity using optparse
+    # I think the way to do this would be to just use getopt instead
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", 
+                      default=False,
+                      help="verbose (print errors/warnings while in "
+                      "event loop)")
+    parser.add_option("-w", "--very-verbose", dest="very_verbose", 
+                      action="store_true", default=False,
+                      help="very verbose (also print client "
+                      "commands/responses)")
+    parser.add_option("-x", "--extremely-verbose", dest="extremely_verbose", 
+                      action="store_true", default=False,
+                      help="extremely verbose (also print internal state "
+                      "transitions)")
 
     # WANT TO DO
-    # parser.add_option("-d", "--daemonize", dest="daemonize", 
-    #                   action="store_true", default=False,
-    #                   help="run as a daemon")
-    # parser.add_option("-u", "--username", dest="username", metavar="USERNAME",
-    #                   help="assume identity of <username> (only when "
-    #                   "run as root)")
-    # parser.add_option("-P", "--pidfile", dest="pidfile", metavar="FILE",
-    #                   help="save PID in <file>, only used with -d option")
+    # parser.add_option("-U", "--udp-port", dest="udp_port", type="int", 
+    #                   default=11211, metavar="PORT",
+    #                   help="UDP port number to listen on (default: "
+    #                   "%default, 0 is off)")
+    # parser.add_option("-s", "--socket", dest="unix_socket", default="", 
+    #                   metavar="SOCKET",
+    #                   help="UNIX socket path to listen on (disables network "
+    #                   "support)")
+    # parser.add_option("-a", "--mask", dest="unix_mask", default="0700", 
+    #                   metavar="MASK",
+    #                   help="access mask for UNIT socket, in octal "
+    #                   "(default %default)")
     # parser.add_option("-c", "--connetions", dest="connections", type="int", 
     #                   default=1024, metavar="CONNECTIONS",
     #                   help="max simultaneous connections (default: 1024)")
@@ -110,16 +122,52 @@ def parse_command_line():
     (options, args) = parser.parse_args()
     return options, args
 
-def main():
-    options, _ = parse_command_line()
+def setup_logging(options):
+    """ figure out our logging level and initialize logging """
+    if options.extremely_verbose:
+        level = mc_log.LOGGING_VVV
+    elif options.very_verbose:
+        level = mc_log.LOGGING_VV
+    elif options.verbose:
+        level = mc_log.LOGGING_V
+    else:
+        level = mc_log.LOGGING_NONE
+    mc_log.initialize_logging(level)
+
+def run_as_daemon(options):
+    """ run the cache in daemon mode """
+    if options.username:
+        uid = pwd.getpwnam(options.username).pw_uid
+    else:
+        uid = os.getuid()
+    if options.pidfile:
+        pidfile = daemon.PIDLockFile(options.pidfile)
+    else:
+        pidfile = None
+    with daemon.DaemonContext(uid=uid):
+        server = memcache_connection.Server( 
+            interface = options.interface, 
+            tcp_port = options.tcp_port, 
+            pidfile = pidfile,
+            max_bytes = options.max_memory*1024*1024)
+        server.start()
+
+def run_it(options):
+    """ run the cache in normal mode """
     server = memcache_connection.Server( 
         interface = options.interface, 
         tcp_port = options.tcp_port, 
-        udp_port = options.udp_port, 
-        unix_socket = options.unix_socket,
-        unix_mask = options.unix_mask,
         max_bytes = options.max_memory*1024*1024)
     server.start()
+
+def main():
+    """ run the program """
+    options, _ = parse_command_line()
+    setup_logging(options)
+    if options.daemonize:
+        run_as_daemon(options)
+    else:
+        run_it(options)
 
 if __name__ == "__main__":
     main()
