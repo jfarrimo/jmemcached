@@ -1,4 +1,7 @@
 #!/usr/local/bin/python
+""" 
+Just do a few simple calls to make sure the daemon is working.
+"""
 import memcache
 
 mc = memcache.Client(['127.0.0.1:11211'], debug=False)
