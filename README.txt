@@ -5,6 +5,11 @@ provides stats a bit differently than the original, the verbose
 option does nothing, and it doesn't do logging in daemon mode.
 Run it with the -h option to see what the command-line options are.
 
+The following python packages are required:
+
+python-daemon
+pyev
+
 Have fun!
 
 
